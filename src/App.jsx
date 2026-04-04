@@ -23,7 +23,9 @@ function App() {
   const fetchExpenses = async () => {
     try {
       const res = await axios.get(API_URL)
-      setExpenses(res.data)
+      const data = res.data
+      // handle both array and paginated response
+      setExpenses(Array.isArray(data) ? data : data.results || [])
       setLoading(false)
     } catch (err) {
       showToast('Failed to fetch expenses', 'error')
