@@ -28,7 +28,6 @@ function App() {
     try {
       const res = await axios.get(API_URL)
       const data = res.data
-      // handle both array and paginated response
       setExpenses(Array.isArray(data) ? data : data.results || [])
       setLoading(false)
     } catch (err) {
@@ -171,15 +170,23 @@ function App() {
               </div>
               <div>
                 <label className="text-gray-400 text-sm mb-1 block">Category</label>
-                <input
-                  type="text"
+                <select
                   name="category"
                   value={form.category}
                   onChange={handleChange}
                   required
                   className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="e.g. Food"
-                />
+                >
+                  <option value="">Select a category</option>
+                  <option value="Food">Food</option>
+                  <option value="Transport">Transport</option>
+                  <option value="Shopping">Shopping</option>
+                  <option value="Entertainment">Entertainment</option>
+                  <option value="Health">Health</option>
+                  <option value="Education">Education</option>
+                  <option value="Bills">Bills</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
               <div>
                 <label className="text-gray-400 text-sm mb-1 block">Date</label>
