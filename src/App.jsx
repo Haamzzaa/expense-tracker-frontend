@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import Login from './pages/Login'
+import Register from './pages/Register'
 
 axios.defaults.xsrfCookieName = 'csrftoken'
 axios.defaults.xsrfHeaderName = 'X-CSRFToken'
@@ -7,7 +10,8 @@ axios.defaults.withCredentials = false
 
 const API_URL = import.meta.env.VITE_API_URL
 
-function App() {
+// ── This is your main app, now wrapped in auth checks ──
+function Dashboard() {
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -19,6 +23,7 @@ function App() {
     category: '',
     date: ''
   })
+  const navigate = useNavigate()
 
   useEffect(() => {
     fetchExpenses()
@@ -26,12 +31,19 @@ function App() {
 
   const fetchExpenses = async () => {
     try {
-      const res = await axios.get(API_URL)
+      const token = localStorage.getItem('access_token')
+      const res = await axios.get(`${API_URL}/api/expenses/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
       const data = res.data
       setExpenses(Array.isArray(data) ? data : data.results || [])
       setLoading(false)
     } catch (err) {
-      showToast('Failed to fetch expenses', 'error')
+      if (err.response?.status === 401) {
+        navigate('/login')  // token expired or invalid → send to login
+      } else {
+        showToast('Failed to fetch expenses', 'error')
+      }
       setLoading(false)
     }
   }
@@ -48,11 +60,13 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
+      const token = localStorage.getItem('access_token')
+      const headers = { Authorization: `Bearer ${token}` }
       if (editingExpense) {
-        await axios.put(`${API_URL}${editingExpense.id}/`, form)
+        await axios.put(`${API_URL}/api/expenses/${editingExpense.id}/`, form, { headers })
         showToast('Expense updated successfully!')
       } else {
-        await axios.post(API_URL, form)
+        await axios.post(`${API_URL}/api/expenses/`, form, { headers })
         showToast('Expense added successfully!')
       }
       setForm({ title: '', amount: '', category: '', date: '' })
@@ -60,7 +74,11 @@ function App() {
       setEditingExpense(null)
       fetchExpenses()
     } catch (err) {
-      showToast('Something went wrong', 'error')
+      if (err.response?.status === 401) {
+        navigate('/login')
+      } else {
+        showToast('Something went wrong', 'error')
+      }
     }
   }
 
@@ -78,12 +96,25 @@ function App() {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this expense?')) return
     try {
-      await axios.delete(`${API_URL}${id}/`)
+      const token = localStorage.getItem('access_token')
+      await axios.delete(`${API_URL}/api/expenses/${id}/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
       showToast('Expense deleted successfully!')
       fetchExpenses()
     } catch (err) {
-      showToast('Failed to delete expense', 'error')
+      if (err.response?.status === 401) {
+        navigate('/login')
+      } else {
+        showToast('Failed to delete expense', 'error')
+      }
     }
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    navigate('/login')
   }
 
   const getCategoryTotals = () => {
@@ -110,19 +141,27 @@ function App() {
         </div>
       )}
 
-      {/* Header */}
       <div className="max-w-5xl mx-auto">
+        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white">Expense Tracker</h1>
             <p className="text-gray-400 mt-1">Track your spending clearly</p>
           </div>
-          <button
-            onClick={() => { setShowForm(!showForm); setEditingExpense(null); setForm({ title: '', amount: '', category: '', date: '' }) }}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-2.5 rounded-lg transition"
-          >
-            {showForm ? 'Cancel' : '+ Add Expense'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setShowForm(!showForm); setEditingExpense(null); setForm({ title: '', amount: '', category: '', date: '' }) }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-2.5 rounded-lg transition"
+            >
+              {showForm ? 'Cancel' : '+ Add Expense'}
+            </button>
+            <button
+              onClick={handleLogout}
+              className="bg-gray-700 hover:bg-gray-600 text-white font-semibold px-5 py-2.5 rounded-lg transition"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         {/* Stat Cards */}
@@ -146,37 +185,20 @@ function App() {
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-gray-400 text-sm mb-1 block">Title</label>
-                <input
-                  type="text"
-                  name="title"
-                  value={form.title}
-                  onChange={handleChange}
-                  required
+                <input type="text" name="title" value={form.title} onChange={handleChange} required
                   className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="e.g. Coffee"
-                />
+                  placeholder="e.g. Coffee" />
               </div>
               <div>
                 <label className="text-gray-400 text-sm mb-1 block">Amount (₹)</label>
-                <input
-                  type="number"
-                  name="amount"
-                  value={form.amount}
-                  onChange={handleChange}
-                  required
+                <input type="number" name="amount" value={form.amount} onChange={handleChange} required
                   className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="e.g. 150"
-                />
+                  placeholder="e.g. 150" />
               </div>
               <div>
                 <label className="text-gray-400 text-sm mb-1 block">Category</label>
-                <select
-                  name="category"
-                  value={form.category}
-                  onChange={handleChange}
-                  required
-                  className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
+                <select name="category" value={form.category} onChange={handleChange} required
+                  className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   <option value="">Select a category</option>
                   <option value="Food">Food</option>
                   <option value="Transport">Transport</option>
@@ -190,20 +212,12 @@ function App() {
               </div>
               <div>
                 <label className="text-gray-400 text-sm mb-1 block">Date</label>
-                <input
-                  type="date"
-                  name="date"
-                  value={form.date}
-                  onChange={handleChange}
-                  required
-                  className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+                <input type="date" name="date" value={form.date} onChange={handleChange} required
+                  className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div className="md:col-span-2">
-                <button
-                  type="submit"
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg transition"
-                >
+                <button type="submit"
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg transition">
                   {editingExpense ? 'Update Expense' : 'Add Expense'}
                 </button>
               </div>
@@ -241,18 +255,10 @@ function App() {
                     <td className="px-4 py-3 text-gray-400">{expense.date}</td>
                     <td className="px-4 py-3 font-semibold text-green-400">₹{parseFloat(expense.amount).toFixed(2)}</td>
                     <td className="px-4 py-3 flex gap-2">
-                      <button
-                        onClick={() => handleEdit(expense)}
-                        className="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-3 py-1.5 rounded-lg transition"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(expense.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg transition"
-                      >
-                        Delete
-                      </button>
+                      <button onClick={() => handleEdit(expense)}
+                        className="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-3 py-1.5 rounded-lg transition">Edit</button>
+                      <button onClick={() => handleDelete(expense.id)}
+                        className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg transition">Delete</button>
                     </td>
                   </tr>
                 ))}
@@ -265,4 +271,20 @@ function App() {
   )
 }
 
-export default App
+// ── This is the root component — handles routing ──
+export default function App() {
+  const isLoggedIn = !!localStorage.getItem('access_token')
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route
+          path="/"
+          element={isLoggedIn ? <Dashboard /> : <Navigate to="/login" />}
+        />
+      </Routes>
+    </BrowserRouter>
+  )
+}
